@@ -1,0 +1,9 @@
+{
+    "name": "sms-inbound",
+    "description": "SMS Inbound mock test tool",
+    "version": "1.0.0",
+    "dependencies": {
+        "bootstrap": "~3",
+        "toastr": "*"
+    }
+}
