@@ -24,8 +24,17 @@ go run *.go
 
 To use the chat example, open http://localhost:8080/ in your browser.
 
-To test sending with DLR do
+Quick command line test:
 
 ```bash
-curl "http://localhost:8080/bulk_server?type=text&user=john&password=smith&sender=johnny&receiver=4178123456&text=Hello&dlr-mask=19&dlr-url=http%3A%2F%2Flocalhost:8080%2Fdlr_test%3Fmsgid%3D%25U%26dlr-event%3D%25d%26sender%3D%25s%26receiver%3D%25r%26error_code%3D%25e%26error_msg%3D%25E%26part_num%3D%25p%26total_parts%3D%25P"
+CONTENT='{"type":"text","auth":{"username":"testuser","password":"testpassword"},"sender":"BulkTest","receiver":"41787078880","dcs":"GSM", "text":"This is test message","dlrMask":19,"dlrUrl":"http://localhost:8080/dlr_test"}'
+curl -L "http://localhost:8080/bulk_server" -XPOST -d "$CONTENT"
+```
+
+## Run on different port
+
+In order to run app on a port other than `8080` you can provide additional parameter `--addr=:port`, eg:
+
+```bash
+go run *.go --addr=:9000
 ```

@@ -19,6 +19,9 @@
           <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
           <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
         <![endif]-->
+        <script>
+            var baseUrl = window.location.hostname + ":" + window.location.port;
+        </script>         
     </head>
     <body>
         <div class="container">
@@ -37,10 +40,6 @@
                         </form>                          
                     </div>
                     <div id="requestsection" style="display:none">
-                        <div class="alert alert-info" role="alert">
-                            To test bulk message trigger this
-                            <a href="#" id="bulktesturl" target="_blank">link</a>
-                        </div>
                         <h2>Received SMSes</h2>
                         <div style="height: 500px; overflow: auto">                                                                    
                             <table class="table">
@@ -59,10 +58,13 @@
                     </div>                   
                 </div>
                 <div class="col-md-6">
-                    <div class="alert alert-info" role="alert">
-                        REST API URL:
-                        <a href="#" id="resturl" target="_blank">#</a>
-                    </div>                    
+                        <div class="alert alert-info" role="alert">
+                            To test bulk message execute from command line:
+                            <pre>
+CONTENT='{"type":"text","auth":{"username":"testuser","password":"testpassword"},"sender":"BulkTest","receiver":"41787078880","dcs":"GSM", "text":"This is test message","dlrMask":19,"dlrUrl":"<script>document.write(baseUrl);</script>/dlr_test"}'
+curl -L "http://<script>document.write(baseUrl);</script>/bulk_server" -XPOST -d "$CONTENT"                                
+                            </pre>
+                        </div>                  
                     <h2>Log</h2>
                     <textarea id="log" cols="80" rows="20" class="form-control"></textarea>
                 </div>
@@ -80,12 +82,8 @@
         
         <script>
             $(document).ready(function(){
-                var bulkUrl = window.location + '/bulk_server?type=text&user=testuser&password=testpass&sender=Bulk+Test&receiver=%2B4178123456&dcs=GSM&text=This+is+test+message%0Asecond+line&dlr-mask=19';
-                var restUrl = window.location + '/rest.php/messages';
-                
-                $("#bulktesturl").attr('href', bulkUrl);
-                $("#resturl").text(restUrl).attr('href', restUrl);
                 app.init();
+                $("#wsurl").val("ws://" + baseUrl + "/ws")
             });
         </script>        
     </body>

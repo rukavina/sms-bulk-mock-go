@@ -3,15 +3,55 @@ package main
 import (
 	"log"
 	"net/http"
-	"net/url"
-	"fmt"
 	"os/exec"
 	"strings"
-	"strconv"
+	"encoding/json"
+	"net/http/httputil"
+	"bytes"
 )
 
-func isEmpty(form *url.Values, fieldName string) bool {
-	return len(form.Get(fieldName)) == 0
+type BulkRequestAuth struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type BulkRequest struct {
+	Type string `json:"type"`
+	Auth BulkRequestAuth `json:"Auth"`
+	Sender string `json:"sender"`
+	Receiver string `json:"receiver"`
+	Dcs string `json:"dcs"`
+	Text string `json:"text"`
+	DlrMask int `json:"dlrMask"`
+	DlrUrl string `json:"dlrUrl"`
+}
+
+type BulkResultSuccess struct {
+	MsgId string `json:"msgId"`
+	NumParts int `json:"numParts"`
+}
+
+type BulkError struct {
+	Code string `json:"code"`
+	Message string `json:"message"`
+}
+
+type BulkResultError struct {
+	Error BulkError `json:"error"`
+}
+
+type BulkDlr struct {
+	MsgId string `json:"msgId"`
+	Event string `json:"event"`
+	ErrorCode int `json:"errorCode"`
+	ErrorMessage string `json:"errorMessage"`
+	PartNum int `json:"partNum"`
+	TotalParts int `json:"totalParts"`
+	AccountName string `json:"accountName"`
+}
+
+func isEmpty(fieldValue string) bool {
+	return len(fieldValue) == 0
 }
 
 func getUUID() string {
@@ -23,68 +63,128 @@ func getUUID() string {
     return strings.TrimSpace(string(uuid))
 }
 
+func jsonResult(w http.ResponseWriter, httpCode int, jsonData interface{}){
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(httpCode)	
+	json.NewEncoder(w).Encode(jsonData)
+}
+
+func makeErrorResult(errorCode string, message string) BulkResultError {
+	return BulkResultError{
+		Error: BulkError{
+			Code: errorCode,
+			Message: message,
+		},
+	}
+}
+
 // serveBulkServer handles bulk gate requests
 func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	log.Print("Bulk server request raw: ",r.Form)
-
-	//check params
-	if isEmpty(&r.Form, "sender") || isEmpty(&r.Form, "receiver") || isEmpty(&r.Form, "text"){
-	    log.Println("Bulk request invalid params")
-	    http.Error(w, "ERR 110", 420)
+	dump, err := httputil.DumpRequest(r, true)
+    log.Print("Bulk server request raw body: ", string(dump))
+    decoder := json.NewDecoder(r.Body)
+    var reqJson BulkRequest   
+    err = decoder.Decode(&reqJson)
+    if err != nil {
+    	log.Println("Bulk request invalid", err)
+	    jsonResult(w, 420, makeErrorResult("109", "Format of text/content parameter iswrong."))
 	    return
-	    //io.WriteString(w, "ERR 110")
+    }
+	//check params
+	if isEmpty(reqJson.Sender) || isEmpty(reqJson.Receiver) || isEmpty(reqJson.Text){
+	    log.Println("Bulk request invalid params")
+	    jsonResult(w, 420, makeErrorResult("110", "Mandatory parameter is missing"))
+	    return
 	}
-	hub.broadcastMessageParams(r.Form.Get("sender"), r.Form.Get("receiver"), r.Form.Get("text"));
+	hub.broadcastMessageParams(reqJson.Sender, reqJson.Receiver, reqJson.Text);
 
 	messageId := getUUID()
-	smsParts := 1
+	smsParts := getNumberOfSMSsegments(reqJson.Text, 6)
 
 	//close http conn. and flush
-	w.WriteHeader(http.StatusOK);
-	w.Write([]byte(fmt.Sprintf("OK %s %v", messageId, smsParts)))
+	resultSuccess := BulkResultSuccess{
+		MsgId: messageId,
+		NumParts: smsParts,
+	}
+	jsonResult(w, 202, resultSuccess)
 
 	log.Printf("Valid request and replied: OK %s %v\n", messageId, smsParts);
 
 	//is there DLR handler?
-	if(isEmpty(&r.Form, "dlr-url")){
-		return;
-	}	
+	if isEmpty(reqJson.DlrUrl){
+		return
+	}
 
-	//values map
-	values := map[string]string{
-		"messageId": messageId,
-		"dlrEvent": "1",
-		"errorCode": "0",
-		"errorDesc": "",
-		"smsParts": strconv.Itoa(smsParts),	
+	notificationDlr := BulkDlr{
+		MsgId: messageId, 
+		Event: "DELIVERED",
+		ErrorCode: 0,
+		ErrorMessage: "",
+		PartNum: 0,
+		TotalParts: smsParts,
+		AccountName: reqJson.Auth.Username,
 	}
 
 	//send dlr as go routine
-	go sendDlr(r.Form.Get("dlr-url"), values, r.Form)
+	go sendDlr(reqJson, notificationDlr)
 }
 
 // send dlr 
-func sendDlr(dlrUrlPattern string, values map[string]string, form url.Values){
-	dlrVars := map[string]string{
-	    "%U": values["messageId"],	//Message ID	Message ID as returned when message is sent, see here
-	    "%d": values["dlrEvent"],
-	    "%s": form.Get("sender"),	//Sender	
-	    "%r": form.Get("receiver"),	//Receiver	
-	    "%e": values["errorCode"],	//Error code	26
-	    "%E": values["errorDesc"],	//Error description	Unknown subscriber
-	    "%A": form.Get("user"),	//Account name used for submission.	YOUR_USERNAME
-	    "%p": "0",	//Part number [0 to total_parts-1]	1
-	    "%P": values["smsParts"],	//Total number of parts	3
-	}
-	for key, value := range dlrVars {
-		dlrUrlPattern = strings.Replace(dlrUrlPattern, key, value, -1)
-	}
-	http.Get(dlrUrlPattern)
+func sendDlr(reqJson BulkRequest, notificationDlr BulkDlr){
+	log.Println("Sending DLR notification to ", reqJson.DlrUrl)
+	dlrBytes, err := json.Marshal(notificationDlr)
+    if err != nil {
+        log.Println("DLR notification err:", err)
+        return
+    }	
+    req, err := http.NewRequest("POST", reqJson.DlrUrl, bytes.NewBuffer(dlrBytes))
+    req.Header.Set("Content-Type", "application/json")
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        log.Println("DLR notification err:", err)
+    }
+    defer resp.Body.Close()
 }
 
 // serveTestDlrHandler handles test dlrs
 func serveTestDlrHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	log.Print("Bulk server DLR request raw: ",r.Form)
+	dump, _ := httputil.DumpRequest(r, true)
+    log.Print("Bulk server DLR request raw:", string(dump))	
+}
+
+func isGsm7bit(text string) bool {
+    gsm7bitChars := "\\@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà^{}[~]|€"
+
+	for _, c := range text {
+		if !strings.ContainsRune(gsm7bitChars, c) {
+			return false
+		}
+	}    
+    return true
+}
+
+func getNumberOfSMSsegments(text string, maxSegments int) int {
+    totalSegment := 0
+    textLen := len(text)
+    if textLen == 0{
+        return 0 //I can see most mobile devices will not allow you to send empty sms, with this check we make sure we don't allow empty SMS
+    }    
+	//UCS-2 Encoding (16-bit)
+    singleMax := 70
+    concatMax := 67
+    if isGsm7bit(text) { //7-bit
+        singleMax = 160
+        concatMax = 153
+    }
+    if textLen <= singleMax {
+        totalSegment = 1;
+    } else {
+        totalSegment = textLen / concatMax
+    }
+    if (totalSegment > maxSegments){
+        return 0 //SMS is very big.
+    }
+    return totalSegment
 }
