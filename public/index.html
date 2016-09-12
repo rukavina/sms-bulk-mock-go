@@ -61,7 +61,7 @@
                         <div class="alert alert-info" role="alert">
                             To test bulk message execute from command line:
                             <pre>
-CONTENT='{"type":"text","auth":{"username":"testuser","password":"testpassword"},"sender":"BulkTest","receiver":"41787078880","dcs":"GSM", "text":"This is test message","dlrMask":19,"dlrUrl":"<script>document.write(baseUrl);</script>/dlr_test"}'
+CONTENT='{"type":"text","auth":{"username":"testuser","password":"testpassword"},"sender":"BulkTest","receiver":"41787078880","dcs":"GSM", "text":"This is test message","dlrMask":19,"dlrUrl":"http://<script>document.write(baseUrl);</script>/dlr_test"}'
 curl -L "http://<script>document.write(baseUrl);</script>/bulk_server" -XPOST -d "$CONTENT"                                
                             </pre>
                         </div>                  
