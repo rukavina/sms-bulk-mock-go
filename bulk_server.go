@@ -145,7 +145,14 @@ func sendDlr(reqJson BulkRequest, notificationDlr BulkDlr){
     if err != nil {
         log.Println("DLR notification err:", err)
     }
-    defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil{
+			resp.Body.Close()
+		}
+        if r := recover(); r != nil {
+        	log.Println("DLR notification recovered:", r)
+        }
+    }()
 }
 
 // serveTestDlrHandler handles test dlrs
