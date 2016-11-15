@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http/httputil"
 	"bytes"
+	"time"
 )
 
 type BulkRequestAuth struct {
@@ -132,6 +133,8 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 // send dlr 
 func sendDlr(reqJson BulkRequest, notificationDlr BulkDlr){
 	log.Println("Sending DLR notification to ", reqJson.DlrUrl)
+	//give a timeout
+	time.Sleep(time.Second * 2)
 	dlrBytes, err := json.Marshal(notificationDlr)
     if err != nil {
         log.Println("DLR notification err:", err)
