@@ -1,5 +1,4 @@
-
-
+var resetOn = 50, messagesCount = 0;
 var app = {
     ws: null,
     connect: function(wsurl){
@@ -27,22 +26,39 @@ var app = {
         };        
 
         this.ws.onmessage = function(m){
-            console.log('received message: ', m.data);
-            var msg = JSON.parse(m.data);
-            self.logLine('Message type received: ' + msg.type);
-            switch (msg.type){
-                case 'error':
-                    toastr.error(msg.data.message);
-                    break;
-                case 'bulk_msg':
-                    toastr.success('BULK success');
-                    $('#received').prepend('<tr><td>' + msg.data.sender + '</td><td>' + msg.data.receiver + '</td><td>' + self.nl2br(msg.data.text) + '</td></tr>');
-                    self.logData(msg.data);
-                    break;                    
-            }                        
-            self.logLine('===================');
+            console.log('received message package: ', m.data);
+            var messagesData = m.data.split("\n");
+            for(var i in messagesData){
+                self.newMessage(messagesData[i]);
+            }
         };      
     },
+
+    newMessage: function(messageData){
+        self = this;
+        console.log('received single message: ', messageData);
+        var msg = JSON.parse(messageData);
+        messagesCount++;
+        //reset
+        if(messagesCount > resetOn){
+            messagesCount = 1;
+            $('#log').val('');
+            $('#received').html('');
+        }            
+        self.logLine('Message type received: ' + msg.type);
+        switch (msg.type){
+            case 'error':
+                toastr.error(msg.data.message);
+                break;
+            case 'bulk_msg':
+                toastr.success('BULK success');
+                $('#received').prepend('<tr><td>' + msg.data.sender + '</td><td>' + msg.data.receiver + '</td><td>' + self.nl2br(msg.data.text) + '</td></tr>');
+                self.logData(msg.data);
+                break;                    
+        }                        
+        self.logLine('===================');
+    },
+
     sendMessage: function (type, data){
         var message = JSON.stringify({
             'type': type,
@@ -74,7 +90,4 @@ var app = {
         return text.replace(/(?:\r\n|\r|\n)/g, '<br>');
     }    
     
-};
-        
-
-
+};//
