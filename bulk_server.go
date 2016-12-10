@@ -79,6 +79,8 @@ func makeErrorResult(errorCode string, message string) BulkResultError {
 	}
 }
 
+var messageCounter int = 0;
+
 // serveBulkServer handles bulk gate requests
 func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	dump, err := httputil.DumpRequest(r, true)
@@ -90,6 +92,13 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
     	log.Println("Bulk request invalid", err)
 	    jsonResult(w, 420, makeErrorResult("109", "Format of text/content parameter iswrong."))
 	    return
+    }
+    messageCounter++;
+    //send throttle error just for fun
+    if messageCounter > 500 {
+    	messageCounter = 0
+	    jsonResult(w, 420, makeErrorResult("105", "Too many messages submitted withing short period of time. Resend later."))
+	    return    	
     }
 	//check params
 	if isEmpty(reqJson.Sender) || isEmpty(reqJson.Receiver) || isEmpty(reqJson.Text){
