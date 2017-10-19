@@ -12,6 +12,7 @@ import (
 )
 
 const panicNumber = "41764986185"
+const timeoutNumber = "41764986186"
 
 type BulkRequestAuth struct {
 	Username string `json:"username"`
@@ -112,6 +113,11 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 	messageId := getUUID()
 	smsParts := getNumberOfSMSsegments(reqJson.Text, 6)
+
+	//simulate long timeout
+	if reqJson.Receiver == timeoutNumber {
+		time.Sleep(time.Second * 45)
+	}	
 
 	//close http conn. and flush
 	if reqJson.Receiver != panicNumber {
