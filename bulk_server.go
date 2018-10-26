@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -117,7 +118,7 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	//simulate long timeout
 	if reqJson.Receiver == timeoutNumber {
 		time.Sleep(time.Second * 45)
-	}	
+	}
 
 	//close http conn. and flush
 	if reqJson.Receiver != panicNumber {
@@ -166,7 +167,14 @@ func sendDlr(reqJson BulkRequest, notificationDlr BulkDlr) {
 	req, err := http.NewRequest("POST", reqJson.DlrUrl, bytes.NewBuffer(dlrBytes))
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	//disable certificate verification
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{
+		Timeout:   time.Second * 10,
+		Transport: tr,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("DLR notification err:", err)
