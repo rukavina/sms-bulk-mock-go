@@ -12,14 +12,19 @@ import (
 	"time"
 )
 
+//number which simulate bulk bug - to panic
 const panicNumber = "41764986185"
+
+//number which simulate bulk bug - to response too late
 const timeoutNumber = "41764986186"
 
+//BulkRequestAuth is auth related embed struct
 type BulkRequestAuth struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
+//BulkRequest is new SMS request
 type BulkRequest struct {
 	Type     string          `json:"type"`
 	Auth     BulkRequestAuth `json:"Auth"`
@@ -28,30 +33,35 @@ type BulkRequest struct {
 	Dcs      string          `json:"dcs"`
 	Text     string          `json:"text"`
 	DlrMask  int             `json:"dlrMask"`
-	DlrUrl   string          `json:"dlrUrl"`
+	DlrURL   string          `json:"dlrUrl"`
 }
 
+//BulkResultSuccess is success response
 type BulkResultSuccess struct {
-	MsgId    string `json:"msgId"`
+	MsgID    string `json:"msgId"`
 	NumParts int    `json:"numParts"`
 }
 
+//BulkError is error response
 type BulkError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
+//BulkResultError is response error wrapper
 type BulkResultError struct {
 	Error BulkError `json:"error"`
 }
 
+//BulkDlr is dlr update
 type BulkDlr struct {
-	MsgId        string `json:"msgId"`
+	MsgID        string `json:"msgId"`
 	Event        string `json:"event"`
 	ErrorCode    int    `json:"errorCode"`
 	ErrorMessage string `json:"errorMessage"`
 	PartNum      int    `json:"partNum"`
 	TotalParts   int    `json:"totalParts"`
+	NumParts     int    `json:"numParts"`
 	AccountName  string `json:"accountName"`
 }
 
@@ -83,15 +93,15 @@ func makeErrorResult(errorCode string, message string) BulkResultError {
 	}
 }
 
-var messageCounter int = 0
+var messageCounter int
 
 // serveBulkServer handles bulk gate requests
 func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	dump, err := httputil.DumpRequest(r, true)
 	log.Print("Bulk server request raw body: ", string(dump))
 	decoder := json.NewDecoder(r.Body)
-	var reqJson BulkRequest
-	err = decoder.Decode(&reqJson)
+	var reqJSON BulkRequest
+	err = decoder.Decode(&reqJSON)
 	if err != nil {
 		log.Println("Bulk request invalid", err)
 		jsonResult(w, 420, makeErrorResult("109", "Format of text/content parameter iswrong."))
@@ -105,58 +115,59 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	//check params
-	if isEmpty(reqJson.Sender) || isEmpty(reqJson.Receiver) || isEmpty(reqJson.Text) {
+	if isEmpty(reqJSON.Sender) || isEmpty(reqJSON.Receiver) || isEmpty(reqJSON.Text) {
 		log.Println("Bulk request invalid params")
 		jsonResult(w, 420, makeErrorResult("110", "Mandatory parameter is missing"))
 		return
 	}
-	hub.broadcastMessageParams(reqJson.Sender, reqJson.Receiver, reqJson.Text)
+	hub.broadcastMessageParams(reqJSON.Sender, reqJSON.Receiver, reqJSON.Text)
 
-	messageId := getUUID()
-	smsParts := getNumberOfSMSsegments(reqJson.Text, 6)
+	messageID := getUUID()
+	smsParts := getNumberOfSMSsegments(reqJSON.Text, 6)
 
 	//simulate long timeout
-	if reqJson.Receiver == timeoutNumber {
+	if reqJSON.Receiver == timeoutNumber {
 		time.Sleep(time.Second * 45)
 	}
 
 	//close http conn. and flush
-	if reqJson.Receiver != panicNumber {
+	if reqJSON.Receiver != panicNumber {
 		resultSuccess := BulkResultSuccess{
-			MsgId:    messageId,
+			MsgID:    messageID,
 			NumParts: smsParts,
 		}
 		jsonResult(w, 202, resultSuccess)
 
-		log.Printf("Valid request and replied: OK %s %v\n", messageId, smsParts)
+		log.Printf("Valid request and replied: OK %s %v\n", messageID, smsParts)
 	}
 
 	//is there DLR handler?
-	if isEmpty(reqJson.DlrUrl) {
+	if isEmpty(reqJSON.DlrURL) {
 		return
 	}
 
 	notificationDlr := BulkDlr{
-		MsgId:        messageId,
+		MsgID:        messageID,
 		Event:        "DELIVERED",
 		ErrorCode:    0,
 		ErrorMessage: "",
-		PartNum:      0,
+		PartNum:      1,
 		TotalParts:   smsParts,
-		AccountName:  reqJson.Auth.Username,
+		NumParts:     smsParts,
+		AccountName:  reqJSON.Auth.Username,
 	}
 
 	//send dlr as go routine
-	go sendDlr(reqJson, notificationDlr)
+	go sendDlr(reqJSON, notificationDlr)
 
-	if reqJson.Receiver == panicNumber {
-		panic("Panic on receiver [" + reqJson.Receiver + "]")
+	if reqJSON.Receiver == panicNumber {
+		panic("Panic on receiver [" + reqJSON.Receiver + "]")
 	}
 }
 
 // send dlr
-func sendDlr(reqJson BulkRequest, notificationDlr BulkDlr) {
-	log.Println("Sending DLR notification to ", reqJson.DlrUrl)
+func sendDlr(reqJSON BulkRequest, notificationDlr BulkDlr) {
+	log.Println("Sending DLR notification to ", reqJSON.DlrURL)
 	//give a timeout
 	time.Sleep(time.Second * 2)
 	dlrBytes, err := json.Marshal(notificationDlr)
@@ -164,7 +175,7 @@ func sendDlr(reqJson BulkRequest, notificationDlr BulkDlr) {
 		log.Println("DLR notification err:", err)
 		return
 	}
-	req, err := http.NewRequest("POST", reqJson.DlrUrl, bytes.NewBuffer(dlrBytes))
+	req, err := http.NewRequest("POST", reqJSON.DlrURL, bytes.NewBuffer(dlrBytes))
 	req.Header.Set("Content-Type", "application/json")
 
 	//disable certificate verification
