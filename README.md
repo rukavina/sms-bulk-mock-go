@@ -19,10 +19,9 @@ using the following commands.
 git clone git@github.com:rukavina/sms-bulk-mock-go.git
 cd sms-bulk-mock-go
 go get github.com/gorilla/websocket
+#install UI
 cd public
 bower install
-cd ..
-go run *.go
 ```
 
 ## Run
