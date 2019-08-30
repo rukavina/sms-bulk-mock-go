@@ -52,7 +52,7 @@ var app = {
                 break;
             case 'bulk_msg':
                 toastr.success('BULK success');
-                $('#received').prepend('<tr><td>' + msg.data.sender + '</td><td>' + msg.data.receiver + '</td><td>' + self.nl2br(msg.data.text) + '</td></tr>');
+                $('#received').prepend('<tr><td>' + msg.data.sender + '</td><td>' + msg.data.receiver + '</td><td>' + self.nl2br(self.escapeHtml(msg.data.text)) + '</td></tr>');
                 self.logData(msg.data);
                 break;                    
         }                        
@@ -88,6 +88,14 @@ var app = {
     },
     nl2br: function(text){
         return text.replace(/(?:\r\n|\r|\n)/g, '<br>');
+    },
+    escapeHtml(unsafe) {
+        return unsafe
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
     }    
     
 };//
