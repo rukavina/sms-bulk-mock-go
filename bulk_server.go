@@ -8,15 +8,88 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os/exec"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
 
-//number which simulate bulk bug - to panic
-const panicNumber = "41764986185"
+//text which simulate bulk bug - to panic
+const panicMessage = "PANIC"
 
-//number which simulate bulk bug - to response too late
-const timeoutNumber = "41764986186"
+//text which simulate bulk bug - to response too late
+const timeoutMessage = "TIMEOUT"
+
+var errorCodes = map[string]string{
+	"101": "Internal application error.",
+	"102": "Encoding not supported or message not encoded with given encoding.",
+	"103": "No account with given username/password.",
+	"104": "Sending from clients IP address not allowed.",
+	"105": "Too many messages submitted within short period of time. Resend later.",
+	"106": "Sender contains words blacklisted on destination.",
+	"107": "Sender contains illegal characters.",
+	"108": "Message (not split automatically by HORISEN BULK Service, but by customer) is too long.",
+	"109": "Format of text/content parameter is wrong.",
+	"110": "Mandatory parameter is missing.",
+	"111": "Unknown message type.",
+	"112": "Format of some parameter is wrong.",
+	"113": "No credit on account balance.",
+	"114": "No route for given destination.",
+	"115": "Message cannot be split into concatenated messages (e.g. too many parts will be needed).",
+}
+
+var dlrErrorCodes = map[string]string{
+	"1":   "Unknown subscriber",
+	"9":   "Illegal subscriber",
+	"11":  "Teleservice not provisioned",
+	"13":  "Call barred",
+	"15":  "CUG reject",
+	"19":  "No SMS support in MS",
+	"20":  "Error in MS",
+	"21":  "Facility not supported",
+	"22":  "Memory capacity exceeded",
+	"29":  "Absent subscriber",
+	"30":  "MS busy for MT SMS",
+	"36":  "Network/Protocol failure",
+	"44":  "Illegal equipment",
+	"60":  "No paging response",
+	"61":  "GMSC congestion",
+	"63":  "HLR timeout",
+	"64":  "MSC/SGSN_timeout",
+	"70":  "SMRSE/TCP error",
+	"72":  "MT congestion",
+	"75":  "GPRS suspended",
+	"80":  "No paging response via MSC",
+	"81":  "IMSI detached",
+	"82":  "Roaming restriction",
+	"83":  "Deregistered in HLR for GSM",
+	"84":  "Purged for GSM",
+	"85":  "No paging response via SGSN",
+	"86":  "GPRS detached",
+	"87":  "Deregistered in HLR for GPRS",
+	"88":  "The MS purged for GPRS",
+	"89":  "Unidentified subscriber via MSC",
+	"90":  "Unidentified subscriber via SGSN",
+	"112": "Originator missing credit on prepaid account",
+	"113": "Destination missing credit on prepaid account",
+	"114": "Error in prepaid system",
+	"500": "Other error",
+	"988": "MNP Error",
+	"989": "Supplier rejected SMS",
+	"990": "HLR failure",
+	"991": "Rejected by message text filter",
+	"992": "Ported numbers not supported on destination",
+	"993": "Blacklisted sender",
+	"994": "No credit",
+	"995": "Undeliverable",
+	"996": "Validity expired",
+	"997": "Blacklisted receiver",
+	"998": "No route",
+	"999": "Repeated submission (possible looping)",
+}
+
+var matchErr = regexp.MustCompile("ERR-([0-9]+)")
+var matchDlrErr = regexp.MustCompile("DLR-(DELIVERED|UNDELIVERED|BUFFERED|SENT_TO_SMSC|REJECTED)-([0-9]+)")
 
 //BulkRequestAuth is auth related embed struct
 type BulkRequestAuth struct {
@@ -107,6 +180,14 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		jsonResult(w, 420, makeErrorResult("109", "Format of text/content parameter iswrong."))
 		return
 	}
+	//try to match simulator error pattern
+	errMatch := matchErr.FindStringSubmatch(reqJSON.Text)
+	if errMatch != nil && len(errMatch) == 2 {
+		log.Println("Bulk request matched pattern to simulate ERR response")
+		jsonResult(w, 420, makeErrorResult(errMatch[1], errorCodes[errMatch[1]]))
+		return
+	}
+
 	messageCounter++
 	//send throttle error just for fun
 	if messageCounter > 500 {
@@ -126,12 +207,12 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	smsParts := getNumberOfSMSsegments(reqJSON.Text, 6)
 
 	//simulate long timeout
-	if reqJSON.Receiver == timeoutNumber {
+	if reqJSON.Text == timeoutMessage {
 		time.Sleep(time.Second * 45)
 	}
 
 	//close http conn. and flush
-	if reqJSON.Receiver != panicNumber {
+	if reqJSON.Text != panicMessage {
 		resultSuccess := BulkResultSuccess{
 			MsgID:    messageID,
 			NumParts: smsParts,
@@ -157,10 +238,19 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		AccountName:  reqJSON.Auth.Username,
 	}
 
+	//try to match simulator dlr error pattern
+	dlrErrMatch := matchDlrErr.FindStringSubmatch(reqJSON.Text)
+	if dlrErrMatch != nil && len(dlrErrMatch) == 3 {
+		log.Println("Bulk request matched pattern to simulate DLR response")
+		notificationDlr.Event = dlrErrMatch[1]
+		notificationDlr.ErrorCode, _ = strconv.Atoi(dlrErrMatch[2])
+		notificationDlr.ErrorMessage = dlrErrorCodes[dlrErrMatch[2]]
+	}
+
 	//send dlr as go routine
 	go sendDlr(reqJSON, notificationDlr)
 
-	if reqJSON.Receiver == panicNumber {
+	if reqJSON.Text == panicMessage {
 		panic("Panic on receiver [" + reqJSON.Receiver + "]")
 	}
 }
