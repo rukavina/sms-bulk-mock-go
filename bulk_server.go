@@ -90,6 +90,7 @@ var dlrErrorCodes = map[string]string{
 
 var matchErr = regexp.MustCompile("ERR-([0-9]+)")
 var matchDlrErr = regexp.MustCompile("DLR-(DELIVERED|UNDELIVERED|BUFFERED|SENT_TO_SMSC|REJECTED)-([0-9]+)")
+var matchDlrDelay = regexp.MustCompile("DLR-DELAYED-([0-9]+)")
 
 //BulkRequestAuth is auth related embed struct
 type BulkRequestAuth struct {
@@ -136,6 +137,7 @@ type BulkDlr struct {
 	TotalParts   int    `json:"totalParts"`
 	NumParts     int    `json:"numParts"`
 	AccountName  string `json:"accountName"`
+	delayed      int
 }
 
 func isEmpty(fieldValue string) bool {
@@ -236,6 +238,7 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		TotalParts:   smsParts,
 		NumParts:     smsParts,
 		AccountName:  reqJSON.Auth.Username,
+		delayed:      2,
 	}
 
 	//try to match simulator dlr error pattern
@@ -245,6 +248,13 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		notificationDlr.Event = dlrErrMatch[1]
 		notificationDlr.ErrorCode, _ = strconv.Atoi(dlrErrMatch[2])
 		notificationDlr.ErrorMessage = dlrErrorCodes[dlrErrMatch[2]]
+	}
+
+	//try to match simulator dlr error pattern
+	dlrDelayedMatch := matchDlrDelay.FindStringSubmatch(reqJSON.Text)
+	if dlrDelayedMatch != nil && len(dlrDelayedMatch) == 2 {
+		log.Println("Bulk request matched pattern to simulate DLR response delay")
+		notificationDlr.delayed, _ = strconv.Atoi(dlrDelayedMatch[1])
 	}
 
 	//send dlr as go routine
@@ -259,7 +269,7 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 func sendDlr(reqJSON BulkRequest, notificationDlr BulkDlr) {
 	log.Println("Sending DLR notification to ", reqJSON.DlrURL)
 	//give a timeout
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Duration(notificationDlr.delayed) * time.Second)
 	dlrBytes, err := json.Marshal(notificationDlr)
 	if err != nil {
 		log.Println("DLR notification err:", err)
