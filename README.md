@@ -64,4 +64,4 @@ Per https://developers.horisen.com/en/sms-http-api#3-10-Receiving-DLR the mock a
 
 `DLR-{UNDELIVERED|REJECTED|BUFFERED|SENT_TO_SMSC}-{ERR_CODE}`, eg. to simulate undelivered with error "Destination missing credit on prepaid account", send a message with text `DLR-UNDELIVERED-113`
 
-In order to test later delivery status report, send `DLR-DELAYED-{SECONDS}`, eg. `DLR-DELAYED-60` In this case it will send back dlr report 60 seconds after the message is created.
+In order to test later delivery status report, send `DLR-DELAYED-{SECONDS}`, eg. `DLR-DELAYED-60` In this case it will send back dlr report 60 seconds after the message is created. By default, DLR will be sent just 2 seconds after the message is created.
