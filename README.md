@@ -51,3 +51,17 @@ In order to run app on a port other than `8080` you can provide additional param
 ```bash
 ./sms-bulk-mock-go --addr=:9000
 ```
+
+## Special Messages
+
+### Emulate errors
+To emulate error responses direct after submission, as per https://developers.horisen.com/en/sms-http-api#3-6-Error-codes
+
+just send a message with content `ERR-{ERR_CODE}`, eg. send `ERR-113` to simulate no credit error response.
+
+### Emulate custom DLR responses
+Per https://developers.horisen.com/en/sms-http-api#3-10-Receiving-DLR the mock api will respond with DLR to a client. But by default it always responds with success (delivered). In order to simulate other responses just send messages in the format:
+
+`DLR-{UNDELIVERED|REJECTED|BUFFERED|SENT_TO_SMSC}-{ERR_CODE}`, eg. to simulate undelivered with error "Destination missing credit on prepaid account", send a message with text `DLR-UNDELIVERED-113`
+
+In order to test later delivery status report, send `DLR-DELAYED-{SECONDS}`, eg. `DLR-DELAYED-60` In this case it will send back dlr report 60 seconds after the message is created.
