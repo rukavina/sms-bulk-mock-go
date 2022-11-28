@@ -134,7 +134,6 @@ type BulkDlr struct {
 	ErrorCode    int    `json:"errorCode"`
 	ErrorMessage string `json:"errorMessage"`
 	PartNum      int    `json:"partNum"`
-	TotalParts   int    `json:"totalParts"`
 	NumParts     int    `json:"numParts"`
 	AccountName  string `json:"accountName"`
 	delayed      int
@@ -234,8 +233,7 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		Event:        "DELIVERED",
 		ErrorCode:    0,
 		ErrorMessage: "",
-		PartNum:      1,
-		TotalParts:   smsParts,
+		PartNum:      0,
 		NumParts:     smsParts,
 		AccountName:  reqJSON.Auth.Username,
 		delayed:      2,
@@ -270,6 +268,18 @@ func sendDlr(reqJSON BulkRequest, notificationDlr BulkDlr) {
 	log.Println("Sending DLR notification to ", reqJSON.DlrURL)
 	//give a timeout
 	time.Sleep(time.Duration(notificationDlr.delayed) * time.Second)
+
+	//send dlr for all parts
+	for i := notificationDlr.PartNum; i < notificationDlr.NumParts; i++ {
+		notificationDlr.PartNum = i
+		sendDlrPart(reqJSON, notificationDlr)
+	}
+}
+
+// send dlr part
+func sendDlrPart(reqJSON BulkRequest, notificationDlr BulkDlr) {
+	log.Printf("\nSending DLR notification for part %d to %s\n", notificationDlr.PartNum, reqJSON.DlrURL)
+
 	dlrBytes, err := json.Marshal(notificationDlr)
 	if err != nil {
 		log.Println("DLR notification err:", err)
