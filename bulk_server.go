@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"net/http/httputil"
 	"os/exec"
@@ -317,9 +318,10 @@ func serveTestDlrHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func isGsm7bit(text string) bool {
+	rtext := []rune(text)
 	gsm7bitChars := "\\@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà^{}[~]|€"
 
-	for _, c := range text {
+	for _, c := range rtext {
 		if !strings.ContainsRune(gsm7bitChars, c) {
 			return false
 		}
@@ -329,7 +331,8 @@ func isGsm7bit(text string) bool {
 
 func getNumberOfSMSsegments(text string, maxSegments int) int {
 	totalSegment := 0
-	textLen := len(text)
+	rtext := []rune(text)
+	textLen := len(rtext)
 	if textLen == 0 {
 		return 0 //I can see most mobile devices will not allow you to send empty sms, with this check we make sure we don't allow empty SMS
 	}
@@ -343,7 +346,7 @@ func getNumberOfSMSsegments(text string, maxSegments int) int {
 	if textLen <= singleMax {
 		totalSegment = 1
 	} else {
-		totalSegment = textLen / concatMax
+		totalSegment = int(math.Ceil(float64(textLen) / float64(concatMax)))
 	}
 	if totalSegment > maxSegments {
 		return 0 //SMS is very big.
