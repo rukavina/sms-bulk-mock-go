@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"log"
 	"math"
@@ -15,10 +14,10 @@ import (
 	"time"
 )
 
-//text which simulate bulk bug - to panic
+// text which simulate bulk bug - to panic
 const panicMessage = "PANIC"
 
-//text which simulate bulk bug - to response too late
+// text which simulate bulk bug - to response too late
 const timeoutMessage = "TIMEOUT"
 
 var errorCodes = map[string]string{
@@ -93,13 +92,13 @@ var matchErr = regexp.MustCompile("ERR-([0-9]+)")
 var matchDlrErr = regexp.MustCompile("DLR-(DELIVERED|UNDELIVERED|BUFFERED|SENT_TO_SMSC|REJECTED)-([0-9]+)")
 var matchDlrDelay = regexp.MustCompile("DLR-DELAYED-([0-9]+)")
 
-//BulkRequestAuth is auth related embed struct
+// BulkRequestAuth is auth related embed struct
 type BulkRequestAuth struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-//BulkRequest is new SMS request
+// BulkRequest is new SMS request
 type BulkRequest struct {
 	Type     string          `json:"type"`
 	Auth     BulkRequestAuth `json:"Auth"`
@@ -111,24 +110,24 @@ type BulkRequest struct {
 	DlrURL   string          `json:"dlrUrl"`
 }
 
-//BulkResultSuccess is success response
+// BulkResultSuccess is success response
 type BulkResultSuccess struct {
 	MsgID    string `json:"msgId"`
 	NumParts int    `json:"numParts"`
 }
 
-//BulkError is error response
+// BulkError is error response
 type BulkError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
-//BulkResultError is response error wrapper
+// BulkResultError is response error wrapper
 type BulkResultError struct {
 	Error BulkError `json:"error"`
 }
 
-//BulkDlr is dlr update
+// BulkDlr is dlr update
 type BulkDlr struct {
 	MsgID        string `json:"msgId"`
 	Event        string `json:"event"`
@@ -171,7 +170,7 @@ func makeErrorResult(errorCode string, message string) BulkResultError {
 var messageCounter int
 
 // serveBulkServer handles bulk gate requests
-func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
+func serveBulkServer(hub *Hub, httpClient *http.Client, w http.ResponseWriter, r *http.Request) {
 	dump, err := httputil.DumpRequest(r, true)
 	log.Print("Bulk server request raw body: ", string(dump))
 	decoder := json.NewDecoder(r.Body)
@@ -257,7 +256,7 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	//send dlr as go routine
-	go sendDlr(reqJSON, notificationDlr)
+	go sendDlr(httpClient, reqJSON, notificationDlr)
 
 	if reqJSON.Text == panicMessage {
 		panic("Panic on receiver [" + reqJSON.Receiver + "]")
@@ -265,7 +264,7 @@ func serveBulkServer(hub *Hub, w http.ResponseWriter, r *http.Request) {
 }
 
 // send dlr
-func sendDlr(reqJSON BulkRequest, notificationDlr BulkDlr) {
+func sendDlr(httpClient *http.Client, reqJSON BulkRequest, notificationDlr BulkDlr) {
 	log.Println("Sending DLR notification to ", reqJSON.DlrURL)
 	//give a timeout
 	time.Sleep(time.Duration(notificationDlr.delayed) * time.Second)
@@ -273,12 +272,12 @@ func sendDlr(reqJSON BulkRequest, notificationDlr BulkDlr) {
 	//send dlr for all parts
 	for i := notificationDlr.PartNum; i < notificationDlr.NumParts; i++ {
 		notificationDlr.PartNum = i
-		sendDlrPart(reqJSON, notificationDlr)
+		sendDlrPart(httpClient, reqJSON, notificationDlr)
 	}
 }
 
 // send dlr part
-func sendDlrPart(reqJSON BulkRequest, notificationDlr BulkDlr) {
+func sendDlrPart(httpClient *http.Client, reqJSON BulkRequest, notificationDlr BulkDlr) {
 	log.Printf("\nSending DLR notification for part %d to %s\n", notificationDlr.PartNum, reqJSON.DlrURL)
 
 	dlrBytes, err := json.Marshal(notificationDlr)
@@ -289,15 +288,7 @@ func sendDlrPart(reqJSON BulkRequest, notificationDlr BulkDlr) {
 	req, err := http.NewRequest("POST", reqJSON.DlrURL, bytes.NewBuffer(dlrBytes))
 	req.Header.Set("Content-Type", "application/json")
 
-	//disable certificate verification
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{
-		Timeout:   time.Second * 10,
-		Transport: tr,
-	}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		log.Println("DLR notification err:", err)
 	}
