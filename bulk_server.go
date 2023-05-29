@@ -207,6 +207,13 @@ func serveBulkServer(hub *Hub, httpClient *http.Client, w http.ResponseWriter, r
 	messageID := getUUID()
 	smsParts := getNumberOfSMSsegments(reqJSON.Text, 6)
 
+	//check if obtained regular number of parts: 1 to 6
+	if smsParts < 1 || smsParts > 6 {
+		log.Println("The message is too long.")
+		jsonResult(w, 420, makeErrorResult("108", "The message is too long."))
+		return
+	}
+
 	//simulate long timeout
 	if reqJSON.Text == timeoutMessage {
 		time.Sleep(time.Second * 45)
